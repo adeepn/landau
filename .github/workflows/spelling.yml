@@ -19,6 +19,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prettify-allowlist:
+    # Auto-sort `.spellcheck-allow.txt` and silently push back the change.
+    # Runs only on `push` events (a `pull_request` event runs against the
+    # synthetic merge ref, not the source branch we'd want to update).
+    # GITHUB_TOKEN-authored pushes do not retrigger workflows, so this
+    # cannot loop on itself.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Sort .spellcheck-allow.txt
+        run: |
+          set -euo pipefail
+          LC_ALL=C sort -u .spellcheck-allow.txt -o .spellcheck-allow.txt
+
+      - name: Commit and push if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet .spellcheck-allow.txt; then
+            echo "Already sorted — nothing to do."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .spellcheck-allow.txt
+          git commit -m "ci(spelling): sort .spellcheck-allow.txt"
+          git push
+
   codespell:
     runs-on: ubuntu-latest
     timeout-minutes: 5

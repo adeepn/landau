@@ -41,12 +41,12 @@ params
 px
 repo
 roadmap
-url
 rsync
 rsyncs
 rulkc
 submodule
 toolchain
+url
 Митапы
 Форк
 агенда
