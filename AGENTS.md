@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the context for coding agents (Claude Code, Codex, OpenHands, …) working on this repository. The human-facing editing guide — adding events/news, changing design, debugging deploys — lives in [`docs/editing.md`](docs/editing.md).
 
 ## Project context
 
@@ -15,7 +13,7 @@ Authoritative content language is **Russian**. English appears only in the proje
 - **Theme** is `pages-themes/hacker` (the original GitHub Pages theme) **flattened into plain CSS** at `static/css/hacker.css`. Source commit is recorded in the file header. Background sprites live at `static/images/{bkg,bullet}.png`.
 - **Layouts** are minimal Go templates in `layouts/_default/{baseof,single,list}.html` + `layouts/index.html`. They reproduce the Jekyll theme's `_layouts/default.html` skeleton (header with site title + description, container with `#main_content`).
 - **Domain**: `landau.one`, served by nginx on a self-hosted server.
-- **Build & deploy**: GitHub Actions → rsync into the nginx docroot. No GitHub Pages, no Jekyll.
+- **Build & deploy**: GitHub Actions → rsync into the nginx docroot.
 
 ## Build, preview, deploy
 
@@ -58,8 +56,10 @@ static/
   css/hacker.css        # theme, plain CSS
   images/{bkg,bullet}.png
   rulkc.png             # RULKC logo, referenced from _index.md
+docs/
+  editing.md            # editor's quick reference (human-facing)
 README.md               # title only, not part of rendered site
-CLAUDE.md               # this file
+AGENTS.md               # this file (agent context)
 LICENSE
 ```
 
