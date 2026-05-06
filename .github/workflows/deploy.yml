@@ -1,0 +1,89 @@
+name: Build and deploy
+
+# Build Hugo site and rsync the result to the production server.
+#
+# Required repository secrets:
+#   DEPLOY_SSH_KEY         private key (full PEM, including BEGIN/END lines)
+#   DEPLOY_SSH_HOST        target hostname
+#   DEPLOY_SSH_USER        SSH login user
+#   DEPLOY_SSH_PATH        absolute path on server (nginx docroot, no trailing slash)
+#   DEPLOY_SSH_KNOWNHOSTS  output of `ssh-keyscan -t ed25519,rsa <host>`
+#
+# Hugo version + tarball checksum live in `.hugo-version` and `.hugo-sha256`
+# at repo root and are bumped by `.github/workflows/hugo-update.yml`.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0   # Hugo's .GitInfo / .Lastmod need full history.
+
+      - name: Read pinned Hugo version + SHA256
+        id: pin
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < .hugo-version)
+          sha256=$(tr -d '[:space:]' < .hugo-sha256)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sha256}"   >> "$GITHUB_OUTPUT"
+
+      - name: Install Hugo extended (linux-amd64, pinned + SHA256-verified)
+        env:
+          HUGO_VERSION: ${{ steps.pin.outputs.version }}
+          HUGO_SHA256:  ${{ steps.pin.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          tarball="hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz"
+          url="https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/${tarball}"
+          curl -fsSL --retry 3 "${url}" -o /tmp/hugo.tar.gz
+          echo "${HUGO_SHA256}  /tmp/hugo.tar.gz" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/hugo"
+          tar -xzf /tmp/hugo.tar.gz -C "${RUNNER_TEMP}/hugo" hugo
+          "${RUNNER_TEMP}/hugo/hugo" version
+          echo "${RUNNER_TEMP}/hugo" >> "$GITHUB_PATH"
+
+      - name: Build site
+        run: hugo --gc --minify --logLevel info
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY:        ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWNHOSTS: ${{ secrets.DEPLOY_SSH_KNOWNHOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          umask 077
+          printf '%s\n' "${DEPLOY_SSH_KEY}"        > ~/.ssh/deploy_key
+          printf '%s\n' "${DEPLOY_SSH_KNOWNHOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy via rsync
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PATH: ${{ secrets.DEPLOY_SSH_PATH }}
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+                --exclude='.well-known/' \
+                -e "ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" \
+                public/ \
+                "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${DEPLOY_SSH_PATH}/"
