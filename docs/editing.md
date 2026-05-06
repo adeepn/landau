@@ -129,18 +129,7 @@ bash scripts/spellcheck.sh            # см. секцию «Орфографи�
 - **codespell** ловит распространённые английские опечатки (типа пропущенных букв, перестановок, удвоений). Запускается в CI автоматически.
 - **hunspell** прогоняет русский + английский, исключения — в `.spellcheck-allow.txt` (по слову на строку, отсортировано). Если CI ругается на легитимное имя собственное или термин — добавьте слово туда.
 
-Локально нужны `hunspell` + словари `ru_RU` и `en_US`. Поставьте подходящим способом для вашей ОС, затем:
-
-```bash
-bash scripts/spellcheck.sh
-```
-
-Альтернатива без локальной установки — Docker:
-
-```bash
-docker run --rm -v "$(pwd):/site" -w /site --platform linux/amd64 ubuntu:24.04 \
-  bash -c 'apt-get update -qq && apt-get install -y -qq hunspell hunspell-ru hunspell-en-us && bash scripts/spellcheck.sh'
-```
+Если локально стоит `hunspell` со словарями `ru_RU` и `en_US` — `bash scripts/spellcheck.sh`. Если нет, можно не ставить: те же проверки автоматически прогонятся в CI на пуше.
 
 ## Если деплой упал
 
