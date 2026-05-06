@@ -77,14 +77,15 @@ jobs:
       actions: write
     timeout-minutes: 5
     steps:
-      - name: Keep at most 10 most recent CI artifacts
+      - name: Keep at most 10 most recent artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # List artifacts created by CI runs, newest first; delete everything past index 10.
+          # First page (up to 100 most-recent artifacts) is enough for trim:
+          # we always remove >>1 per run, so it converges in a couple of CI cycles.
+          # No name filter — any artifact past the 10 newest goes.
           gh api \
-            --paginate \
             -H "Accept: application/vnd.github+json" \
             "repos/${{ github.repository }}/actions/artifacts?per_page=100" \
             --jq '.artifacts | sort_by(.created_at) | reverse | .[10:] | .[].id' \

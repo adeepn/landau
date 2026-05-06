@@ -113,9 +113,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Get all published (non-draft) releases, sort newest-first by published_at,
-          # take everything past index 7 — the surplus to delete.
-          gh api --paginate \
+          # First page (up to 100) is plenty: we delete >>1 per run, so even if
+          # the repo somehow grows past 100 published releases, this converges.
+          gh api \
             -H "Accept: application/vnd.github+json" \
             "repos/${{ github.repository }}/releases?per_page=100" \
             --jq '[.[] | select(.draft == false)] | sort_by(.published_at) | reverse | .[7:] | .[] | "\(.id) \(.tag_name)"' \

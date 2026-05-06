@@ -40,7 +40,7 @@ Until you have content ready to publish, keep `draft: true` in frontmatter — H
     release-deploy.yml  # release: published → build + rsync to landau.one + prune
     hugo-update.yml     # weekly cron: bump .hugo-version + .hugo-sha256, open PR
   dependabot.yml        # github-actions ecosystem only
-  release-drafter.yml   # release-drafter config: template, categories, autolabeler
+  release-drafter.yml   # release-drafter config: changelog template only
 .codespellrc            # codespell config (skip patterns, ignore-words-list)
 .spellcheck-allow.txt   # extra allowed words for hunspell (proper nouns, jargon)
 .hugo-version           # pinned Hugo version (e.g. 0.160.1)
@@ -96,7 +96,7 @@ The release model is **PR-based, manually-published** (inspired by `jethome-iot/
 2. On every push and PR, two workflows run:
    - **`ci.yml`** — installs the pinned Hugo, builds with `--panicOnWarning`, uploads `public/` as an artifact (kept ≤ 7 days, ≤ 10 newest).
    - **`spelling.yml`** — `codespell` (English typos) + `scripts/spellcheck.sh` (hunspell with `ru_RU,en_US`, filtered through `.spellcheck-allow.txt`). Both must pass.
-3. Once a PR is merged into `main`, **`release-drafter.yml`** runs: it computes the next CalVer tag (`YYYY.MM.N`, where N restarts at 0 each calendar month), then refreshes the draft GitHub Release with all merged PRs since the previous tag. PR titles like `event:`, `theme:`, `docs:`, `fix:`, `deps:` get auto-labelled and grouped into changelog sections (see `.github/release-drafter.yml`).
+3. Once a PR is merged into `main`, **`release-drafter.yml`** runs: it computes the next CalVer tag (`YYYY.MM.N`, where N restarts at 0 each calendar month), then refreshes the draft GitHub Release with all merged PRs since the previous tag, listed flat in chronological order.
 4. The maintainer **manually publishes the draft release** when ready. That fires **`release-deploy.yml`**, which builds Hugo with `HUGO_PARAMS_VERSION=<tag>`, rsyncs `public/` into the nginx docroot at `landau.one`, then prunes published releases (and their tags) beyond the 7 most recent.
 
 A push to `main` therefore does **not** publish to landau.one — it only updates CI, the draft release, and the artifact list. Production deploys require an explicit human action (clicking "Publish release" in the GitHub UI, or running `release-deploy.yml` via `workflow_dispatch`).

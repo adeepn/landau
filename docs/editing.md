@@ -4,8 +4,9 @@
 
 ## Один раз перед началом
 
+Поставьте Hugo extended (любым способом для вашей ОС). Затем:
+
 ```bash
-brew install hugo                 # extended, актуальный stable
 git clone git@github.com:adeepn/landau.git
 cd landau
 hugo server -D                    # http://localhost:1313, авто-перезагрузка
@@ -27,7 +28,7 @@ git push          →   CI и spell-check на пуше; артефакт сбо
 
 **Push в `main` (включая мерж PR) сам по себе НЕ публикует** на landau.one. Публикация — это явное действие: открыть последний draft release в Settings → Releases, проверить changelog, нажать «Publish release». Только тогда деплой.
 
-Прямые коммиты в `main` (без PR) тоже валидны и попадут в draft release, но рабочая модель — feature branch + PR (так release-drafter аккуратно сгруппирует изменения по PR-заголовкам).
+Прямые коммиты в `main` (без PR) тоже валидны и попадут в draft release, но рабочая модель — feature branch + PR.
 
 ## Что и где редактировать
 
@@ -67,21 +68,7 @@ git checkout -b news/2026-05-06-zagolovok
 hugo new content news/2026-05-06-zagolovok.md
 ```
 
-Та же логика, шаблон в `archetypes/news.md` проще. Список постов: `/news/`. PR-заголовок начинайте с `news:` — release-drafter сгруппирует под рубрикой «🆕 Новый контент».
-
-## Префиксы PR-заголовков
-
-`release-drafter` группирует записи в changelog по PR-заголовкам. Используйте префиксы:
-
-| Префикс | Группа в changelog |
-| --- | --- |
-| `event:` | 🆕 Новый контент |
-| `news:` | 🆕 Новый контент |
-| `content:` | 🆕 Новый контент |
-| `theme:` / `design:` | 🎨 Дизайн / тема |
-| `ci:` / `infra:` / `deps:` | 🛠 Инфраструктура и CI |
-| `docs:` | 📝 Документация |
-| `fix:` | 🐛 Исправления |
+Та же логика, шаблон в `archetypes/news.md` проще. Список постов: `/news/`.
 
 ## Фото в событие
 
@@ -132,7 +119,7 @@ Hugo сам разрулит относительные пути. Lightbox-га�
 
 ```bash
 hugo --gc --minify --panicOnWarning   # то же, что в CI
-bash scripts/spellcheck.sh            # нужны hunspell + hunspell-ru + hunspell-en-us
+bash scripts/spellcheck.sh            # см. секцию «Орфография» ниже
 ```
 
 Если оба прошли без ошибок — CI на пуше тоже пройдёт.
@@ -142,15 +129,18 @@ bash scripts/spellcheck.sh            # нужны hunspell + hunspell-ru + huns
 - **codespell** ловит распространённые английские опечатки (типа пропущенных букв, перестановок, удвоений). Запускается в CI автоматически.
 - **hunspell** прогоняет русский + английский, исключения — в `.spellcheck-allow.txt` (по слову на строку, отсортировано). Если CI ругается на легитимное имя собственное или термин — добавьте слово туда.
 
-Локальный прогон:
+Локально нужны `hunspell` + словари `ru_RU` и `en_US`. Поставьте подходящим способом для вашей ОС, затем:
 
 ```bash
-brew install hunspell                                             # macOS
-brew tap homebrew/dupes && brew install hunspell-ru hunspell-en   # словари
 bash scripts/spellcheck.sh
 ```
 
-(На Linux: `apt install hunspell hunspell-ru hunspell-en-us`.)
+Альтернатива без локальной установки — Docker:
+
+```bash
+docker run --rm -v "$(pwd):/site" -w /site --platform linux/amd64 ubuntu:24.04 \
+  bash -c 'apt-get update -qq && apt-get install -y -qq hunspell hunspell-ru hunspell-en-us && bash scripts/spellcheck.sh'
+```
 
 ## Если деплой упал
 
