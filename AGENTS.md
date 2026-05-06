@@ -34,13 +34,21 @@ Until you have content ready to publish, keep `draft: true` in frontmatter — H
 ```
 .github/
   workflows/
-    deploy.yml          # build + rsync to landau.one on push to main
+    ci.yml              # build sanity check + artifact upload (push, PR)
+    spelling.yml        # codespell (EN typos) + hunspell (RU+EN, with allow list)
+    release-drafter.yml # push to main → recompute YYYY.MM.N, refresh draft release
+    release-deploy.yml  # release: published → build + rsync to landau.one + prune
     hugo-update.yml     # weekly cron: bump .hugo-version + .hugo-sha256, open PR
   dependabot.yml        # github-actions ecosystem only
+  release-drafter.yml   # release-drafter config: template, categories, autolabeler
+.codespellrc            # codespell config (skip patterns, ignore-words-list)
+.spellcheck-allow.txt   # extra allowed words for hunspell (proper nouns, jargon)
 .hugo-version           # pinned Hugo version (e.g. 0.160.1)
 .hugo-sha256            # SHA256 of hugo_extended_<ver>_linux-amd64.tar.gz
 hugo.toml               # site config: baseURL=https://landau.one/, relativeURLs=true
 archetypes/             # `hugo new` templates: default, events, news
+scripts/
+  spellcheck.sh         # markdown stripper + hunspell -d ru_RU,en_US driver
 content/
   _index.md             # home page (was Jekyll's index.md)
   events/
@@ -80,10 +88,47 @@ The `pages-themes/hacker` upstream is rarely changed (last commit on master is f
 
 There is no SCSS toolchain in this repo on purpose — the CSS is final, hand-flattened, and human-readable.
 
-## CI / supply chain
+## CI and release pipeline
 
-- **All Action versions are pinned to specific tags** (e.g. `actions/checkout@v6.0.2`). Dependabot watches the `github-actions` ecosystem and opens weekly PRs.
+The release model is **PR-based, manually-published** (inspired by `jethome-iot/docs`):
+
+1. Work happens on feature branches; PRs target `main`.
+2. On every push and PR, two workflows run:
+   - **`ci.yml`** — installs the pinned Hugo, builds with `--panicOnWarning`, uploads `public/` as an artifact (kept ≤ 7 days, ≤ 10 newest).
+   - **`spelling.yml`** — `codespell` (English typos) + `scripts/spellcheck.sh` (hunspell with `ru_RU,en_US`, filtered through `.spellcheck-allow.txt`). Both must pass.
+3. Once a PR is merged into `main`, **`release-drafter.yml`** runs: it computes the next CalVer tag (`YYYY.MM.N`, where N restarts at 0 each calendar month), then refreshes the draft GitHub Release with all merged PRs since the previous tag. PR titles like `event:`, `theme:`, `docs:`, `fix:`, `deps:` get auto-labelled and grouped into changelog sections (see `.github/release-drafter.yml`).
+4. The maintainer **manually publishes the draft release** when ready. That fires **`release-deploy.yml`**, which builds Hugo with `HUGO_PARAMS_VERSION=<tag>`, rsyncs `public/` into the nginx docroot at `landau.one`, then prunes published releases (and their tags) beyond the 7 most recent.
+
+A push to `main` therefore does **not** publish to landau.one — it only updates CI, the draft release, and the artifact list. Production deploys require an explicit human action (clicking "Publish release" in the GitHub UI, or running `release-deploy.yml` via `workflow_dispatch`).
+
+### Footer version
+
+`layouts/_default/baseof.html` renders a small footer with the build's release tag. The value comes from Hugo's environment-driven params convention:
+
+- `release-deploy.yml` sets `HUGO_PARAMS_VERSION=<release tag>` for production builds → footer shows `v2026.05.0`.
+- `ci.yml` sets `HUGO_PARAMS_VERSION=dev-<sha>` for sanity-build artifacts → footer shows `vdev-abc1234`.
+- A bare local `hugo server` with no env var → the template falls back to `dev`.
+
+### Versioning algorithm (CalVer `YYYY.MM.N`)
+
+`.github/workflows/release-drafter.yml` derives the next tag from the most recent existing tag:
+
+- If the latest tag's year + month equals today's UTC year + month → `N = latest.N + 1`.
+- Otherwise (new month, or no tags yet) → `N = 0`.
+
+So the first release in any month is `.0`, not `.1`. Bash arithmetic uses `10#` prefix to force base-10 parsing (otherwise `08` would be misread as octal and break in August/September).
+
+### Spell checking
+
+- **codespell** (`.codespellrc`) — fast English typo scan; trips on common dropped/transposed-letter misspellings. Effectively zero false positives on our content; runs everywhere.
+- **hunspell** via `scripts/spellcheck.sh` — strips YAML frontmatter, fenced code blocks, inline code spans, HTML tags, URLs, emails, and common markdown punctuation, then feeds the remainder through `hunspell -d ru_RU,en_US -l`. Words in `.spellcheck-allow.txt` are accepted as correct. Add proper nouns and technical jargon (LANDAU, RULKC, BSP, frontmatter, …) there as content grows.
+- The script can also be run locally: `bash scripts/spellcheck.sh` (needs `hunspell-ru` and `hunspell-en-us` packages).
+
+### Supply chain
+
+- **All Action versions are pinned to specific tags** (e.g. `actions/checkout@v6.0.2`, `release-drafter/release-drafter@v7.2.0`). Dependabot watches the `github-actions` ecosystem and opens weekly PRs.
 - **Hugo is bumped by a custom cron workflow**, not Dependabot. The workflow enforces a 7-day release soak (skips releases younger than a week, per the global supply-chain rule), fetches the official `checksums.txt` from the GitHub release to populate `.hugo-sha256`, smoke-tests `hugo --gc --minify` against the current site, then opens a PR. Manual trigger via `workflow_dispatch`.
+- **No third-party action is used for release pruning or artifact pruning** — both are done with `gh api` directly. Smaller trust surface, no dependency on community accounts.
 - **Deploy secrets** required in repo settings:
   - `DEPLOY_SSH_KEY` — full PEM, including the `-----BEGIN/END-----` lines
   - `DEPLOY_SSH_HOST` — hostname (matches the entry in `DEPLOY_SSH_KNOWNHOSTS`)

@@ -1,0 +1,74 @@
+# Release-drafter config for the landau Hugo site.
+# Triggered by .github/workflows/release-drafter.yml on every push to main.
+
+template: |
+  ## Что изменилось
+
+  $CHANGES
+
+  **Полный список:** https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_VERSION
+
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+change-title-escapes: '\<*_&'   # avoid markdown rendering surprises in PR titles
+
+categories:
+  - title: '🆕 Новый контент'
+    labels:
+      - 'content'
+      - 'event'
+      - 'news'
+  - title: '🎨 Дизайн / тема'
+    labels:
+      - 'design'
+      - 'theme'
+  - title: '🛠 Инфраструктура и CI'
+    labels:
+      - 'ci'
+      - 'infra'
+      - 'dependencies'
+  - title: '📝 Документация'
+    labels:
+      - 'docs'
+  - title: '🐛 Исправления'
+    labels:
+      - 'bug'
+      - 'fix'
+
+# Auto-attach a category label based on the PR title prefix
+# (e.g. `content: add ...`, `theme: ...`, `ci: ...`).
+autolabeler:
+  - label: 'content'
+    title:
+      - '/^content[(:]/i'
+  - label: 'event'
+    title:
+      - '/^event[(:]/i'
+  - label: 'news'
+    title:
+      - '/^news[(:]/i'
+  - label: 'design'
+    title:
+      - '/^design[(:]/i'
+  - label: 'theme'
+    title:
+      - '/^theme[(:]/i'
+  - label: 'ci'
+    title:
+      - '/^ci[(:]/i'
+  - label: 'infra'
+    title:
+      - '/^infra[(:]/i'
+  - label: 'dependencies'
+    title:
+      - '/^deps[(:]/i'
+      - '/^chore\(deps[):]/i'
+  - label: 'docs'
+    title:
+      - '/^docs[(:]/i'
+  - label: 'fix'
+    title:
+      - '/^fix[(:]/i'
+
+# PRs without any categorised label still appear in changelog under a fallback heading.
+exclude-labels:
+  - 'skip-changelog'

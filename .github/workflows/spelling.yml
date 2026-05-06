@@ -1,0 +1,52 @@
+name: Spell check
+
+# Two-stage spell check on markdown sources:
+#   1. codespell  — fast English typo scan (recieve, occured, lenght, ...).
+#   2. hunspell   — RU + EN dictionary check via scripts/spellcheck.sh,
+#                   with project-specific words in .spellcheck-allow.txt.
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spelling-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codespell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Install codespell
+        run: pip install --user 'codespell==2.4.1'
+
+      - name: Run codespell
+        run: ~/.local/bin/codespell --config .codespellrc
+
+  hunspell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Install hunspell + RU/EN dictionaries
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          if ! sudo apt-get install -y -qq --no-install-recommends \
+                hunspell hunspell-ru hunspell-en-us; then
+            sudo apt-get install -y -qq --no-install-recommends \
+                hunspell myspell-ru hunspell-en-us
+          fi
+          hunspell -D 2>&1 | grep -E '(ru_RU|en_US)' || true
+
+      - name: Run spellcheck
+        run: bash scripts/spellcheck.sh

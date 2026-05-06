@@ -1,6 +1,11 @@
-name: Build and deploy
+name: Release deploy
 
-# Build Hugo site and rsync the result to the production server.
+# Build Hugo site (pinned) and rsync the result to the production server
+# whenever a draft release is *published*. Manual trigger via workflow_dispatch
+# also works (deploys whatever's on main with the latest tag as version).
+#
+# After a successful deploy, prune older releases (keep 7 most recent published)
+# along with their git tags, so the GitHub Releases UI doesn't accumulate noise.
 #
 # Required repository secrets:
 #   DEPLOY_SSH_KEY         private key (full PEM, including BEGIN/END lines)
@@ -13,16 +18,16 @@ name: Build and deploy
 # at repo root and are bumped by `.github/workflows/hugo-update.yml`.
 
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
-  group: deploy
+  group: release-deploy
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write   # for prune-old-releases step (release + tag deletion)
 
 jobs:
   deploy:
@@ -30,10 +35,22 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Checkout
+      - name: Checkout (full history for `git describe`)
         uses: actions/checkout@v6.0.2
         with:
-          fetch-depth: 0   # Hugo's .GitInfo / .Lastmod need full history.
+          fetch-depth: 0
+
+      - name: Determine release version for footer
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            version="${{ github.event.release.tag_name }}"
+          else
+            version=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+          fi
+          echo "Version param: ${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Read pinned Hugo version + SHA256
         id: pin
@@ -59,8 +76,10 @@ jobs:
           "${RUNNER_TEMP}/hugo/hugo" version
           echo "${RUNNER_TEMP}/hugo" >> "$GITHUB_PATH"
 
-      - name: Build site
-        run: hugo --gc --minify --logLevel info
+      - name: Build site (with release version embedded)
+        env:
+          HUGO_PARAMS_VERSION: ${{ steps.ver.outputs.version }}
+        run: hugo --gc --minify --logLevel info --panicOnWarning
 
       - name: Configure SSH
         env:
@@ -87,3 +106,26 @@ jobs:
                 -e "ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" \
                 public/ \
                 "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${DEPLOY_SSH_PATH}/"
+
+      - name: Prune old published releases (keep 7 most recent)
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Get all published (non-draft) releases, sort newest-first by published_at,
+          # take everything past index 7 — the surplus to delete.
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '[.[] | select(.draft == false)] | sort_by(.published_at) | reverse | .[7:] | .[] | "\(.id) \(.tag_name)"' \
+          | while read -r rel_id tag_name; do
+              [ -n "${rel_id:-}" ] || continue
+              echo "Deleting release ${rel_id} (tag ${tag_name})"
+              gh api -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${{ github.repository }}/releases/${rel_id}"
+              gh api -X DELETE \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${{ github.repository }}/git/refs/tags/${tag_name}" || true
+            done

@@ -16,11 +16,18 @@ hugo server -D                    # http://localhost:1313, авто-переза
 ## Базовый цикл
 
 ```
-правим .md   →   hugo server -D в браузере
-git commit && git push origin main   →   CI билдит и rsync на landau.one
+feature-ветка → правим .md → hugo server -D смотрим в браузере
+git push          →   CI и spell-check на пуше; артефакт сборки доступен в Actions
+открываем PR в main, ревьюим, мержим
+                  →   release-drafter обновляет draft GitHub Release
+                      (версия YYYY.MM.N автоматически)
+вручную "Publish release" в UI GitHub
+                  →   release-deploy билдит и rsync-ит на landau.one
 ```
 
-Деплоится только ветка `main`. Работа в любой другой ветке / PR — без публикации.
+**Push в `main` (включая мерж PR) сам по себе НЕ публикует** на landau.one. Публикация — это явное действие: открыть последний draft release в Settings → Releases, проверить changelog, нажать «Publish release». Только тогда деплой.
+
+Прямые коммиты в `main` (без PR) тоже валидны и попадут в draft release, но рабочая модель — feature branch + PR (так release-drafter аккуратно сгруппирует изменения по PR-заголовкам).
 
 ## Что и где редактировать
 
@@ -37,6 +44,7 @@ Markdown-файлы устроены так: между двумя `---` све�
 ## Добавить событие
 
 ```bash
+git checkout -b event/open-mic-002
 hugo new content events/open-mic-002/index.md
 ```
 
@@ -46,17 +54,34 @@ hugo new content events/open-mic-002/index.md
 2. Поправить во frontmatter `title`, `description` и `date` (по дате идёт сортировка на `/events/`).
 3. Когда готово — `draft: true` → `draft: false`.
 4. Локально проверить: `http://localhost:1313/events/open-mic-002/`.
-5. `git add content/events/open-mic-002/ && git commit && git push`.
+5. `git add content/events/open-mic-002/ && git commit -m "event: add open-mic-002"`.
+6. `git push -u origin event/open-mic-002` → открыть PR в `main`.
+7. После мержа PR — событие попадёт в следующий draft release; деплой случится при ручной публикации.
 
 Список всех событий автоматически появится на странице `/events/`. Если нужно, чтобы новое событие отображалось ещё и в секции «🎙️ Список событий» на главной — добавьте ссылку вручную в `content/_index.md` (главная не подтягивает события сама — это сознательно, чтобы вы выбирали что показывать).
 
 ## Добавить новость
 
 ```bash
+git checkout -b news/2026-05-06-zagolovok
 hugo new content news/2026-05-06-zagolovok.md
 ```
 
-Та же логика, шаблон в `archetypes/news.md` проще. Список постов: `/news/`.
+Та же логика, шаблон в `archetypes/news.md` проще. Список постов: `/news/`. PR-заголовок начинайте с `news:` — release-drafter сгруппирует под рубрикой «🆕 Новый контент».
+
+## Префиксы PR-заголовков
+
+`release-drafter` группирует записи в changelog по PR-заголовкам. Используйте префиксы:
+
+| Префикс | Группа в changelog |
+| --- | --- |
+| `event:` | 🆕 Новый контент |
+| `news:` | 🆕 Новый контент |
+| `content:` | 🆕 Новый контент |
+| `theme:` / `design:` | 🎨 Дизайн / тема |
+| `ci:` / `infra:` / `deps:` | 🛠 Инфраструктура и CI |
+| `docs:` | 📝 Документация |
+| `fix:` | 🐛 Исправления |
 
 ## Фото в событие
 
@@ -106,15 +131,31 @@ Hugo сам разрулит относительные пути. Lightbox-га�
 ## Перед пушем
 
 ```bash
-hugo --gc --minify
+hugo --gc --minify --panicOnWarning   # то же, что в CI
+bash scripts/spellcheck.sh            # нужны hunspell + hunspell-ru + hunspell-en-us
 ```
 
-Та же команда, что и в CI. Если выходит без warnings и `public/index.html` визуально нормальный — деплой пройдёт.
+Если оба прошли без ошибок — CI на пуше тоже пройдёт.
+
+## Орфография
+
+- **codespell** ловит распространённые английские опечатки (типа пропущенных букв, перестановок, удвоений). Запускается в CI автоматически.
+- **hunspell** прогоняет русский + английский, исключения — в `.spellcheck-allow.txt` (по слову на строку, отсортировано). Если CI ругается на легитимное имя собственное или термин — добавьте слово туда.
+
+Локальный прогон:
+
+```bash
+brew install hunspell                                             # macOS
+brew tap homebrew/dupes && brew install hunspell-ru hunspell-en   # словари
+bash scripts/spellcheck.sh
+```
+
+(На Linux: `apt install hunspell hunspell-ru hunspell-en-us`.)
 
 ## Если деплой упал
 
 ```bash
-gh run list --limit 5
+gh run list --workflow=release-deploy.yml --limit 5
 gh run view <ID> --log-failed
 ```
 
@@ -123,3 +164,12 @@ gh run view <ID> --log-failed
 - Секреты `DEPLOY_SSH_*` отсутствуют или с опечаткой → шаг **Deploy via rsync** покажет SSH-ошибку.
 - `DEPLOY_SSH_KNOWNHOSTS` устарел (на сервере перевыпустили SSH-ключ) → перегенерировать `ssh-keyscan -t ed25519,rsa <host>` и обновить секрет.
 - nginx не отдаёт обновлённое содержимое → проверить, что `DEPLOY_SSH_PATH` действительно равен docroot в nginx-конфиге.
+
+## Откатить релиз
+
+Если опубликовали draft, и в продакшне всплыла регрессия:
+
+1. В Releases зайти в предыдущий релиз и нажать «Edit» → копировать тег.
+2. На странице workflow `release-deploy.yml` нажать «Run workflow», выбрать ветку с этим тегом (или просто main с `git checkout <тег> && git push -f` — но так лучше не делать).
+
+Проще: открыть `release-deploy.yml` через `workflow_dispatch` на main; он перебилдит и зальёт текущее состояние main с пометкой версии = последний тег. Если нужен именно конкретный прошлый тег — сделайте PR `revert: ...`, мерж, новый draft, publish.
