@@ -13,6 +13,7 @@ RGB
 RSS
 RULKC
 SCSS
+SHA
 UI
 YAML
 backlink

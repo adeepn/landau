@@ -34,6 +34,25 @@ if [ "${#files[@]}" -eq 0 ]; then
   exit 0
 fi
 
+# Sanity check: confirm hunspell can actually load both dictionaries.
+# (On some environments — e.g. GitHub Actions ubuntu-24.04 runner image —
+# Ubuntu's hunspell-ru / hunspell-en-us packages can install successfully
+# but leave /usr/share/hunspell/ stripped of the .aff/.dic files. Set
+# DICPATH to a directory containing ru_RU.{aff,dic} and en_US.{aff,dic} as
+# a workaround.)
+if echo 'архитектура' | hunspell -d ru_RU,en_US -l | grep -qx 'архитектура'; then
+  echo "::error::hunspell ru_RU dictionary not loaded properly"
+  echo "DICPATH=${DICPATH:-(unset)}"
+  hunspell -D 2>&1 | head -30
+  exit 1
+fi
+if echo 'architecture' | hunspell -d ru_RU,en_US -l | grep -qx 'architecture'; then
+  echo "::error::hunspell en_US dictionary not loaded properly"
+  echo "DICPATH=${DICPATH:-(unset)}"
+  hunspell -D 2>&1 | head -30
+  exit 1
+fi
+
 unknown=$(mktemp)
 trap 'rm -f "${unknown}"' EXIT
 
