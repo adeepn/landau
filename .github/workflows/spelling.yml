@@ -21,11 +21,11 @@ concurrency:
 jobs:
   prettify-allowlist:
     # Auto-sort `.spellcheck-allow.txt` and silently push back the change.
-    # Runs only on `push` events (a `pull_request` event runs against the
-    # synthetic merge ref, not the source branch we'd want to update).
+    # Runs only on push to a branch (a `pull_request` event uses the merge
+    # ref, and a tag push leaves a detached HEAD where `git push` can't go).
     # GITHUB_TOKEN-authored pushes do not retrigger workflows, so this
     # cannot loop on itself.
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:

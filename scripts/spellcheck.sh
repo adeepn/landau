@@ -58,7 +58,8 @@ if echo 'architecture' | hunspell -d ru_RU,en_US -l | grep -qx 'architecture'; t
   exit 1
 fi
 
-unknown=$(mktemp)
+# Explicit template — bare `mktemp` errors on macOS/BSD (`too few X's in template`).
+unknown=$(mktemp "${TMPDIR:-/tmp}/landau-spellcheck.XXXXXX")
 trap 'rm -f "${unknown}"' EXIT
 
 for f in "${files[@]}"; do
