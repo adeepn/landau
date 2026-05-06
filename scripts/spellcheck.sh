@@ -18,13 +18,18 @@ if [ "${#PATHS[@]}" -eq 0 ]; then
   PATHS=(content docs README.md AGENTS.md)
 fi
 
-mapfile -t files < <(
+# Build the file list. Avoid `mapfile`/`readarray` so the script runs on
+# Bash 3.2 (macOS default) as well as Linux's modern bash.
+files=()
+while IFS= read -r line; do
+  [ -n "${line}" ] && files+=("${line}")
+done < <(
   for p in "${PATHS[@]}"; do
-    [ -e "$p" ] || continue
-    if [ -d "$p" ]; then
-      find "$p" -type f -name '*.md'
+    [ -e "${p}" ] || continue
+    if [ -d "${p}" ]; then
+      find "${p}" -type f -name '*.md'
     else
-      printf '%s\n' "$p"
+      printf '%s\n' "${p}"
     fi
   done | sort -u
 )

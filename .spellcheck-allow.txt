@@ -21,6 +21,7 @@ canonicalise
 changelog
 codespell
 cron
+dirs
 docroot
 env
 favicon
@@ -29,15 +30,18 @@ frontmatter
 github
 hostname
 hunspell
+inlined
 labelled
 linux
 mailto
 md
 nginx
+og
 params
 px
 repo
 roadmap
+url
 rsync
 rsyncs
 rulkc

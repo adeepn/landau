@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write       # create/update releases and tags
+  pull-requests: read   # release-drafter reads merged PRs to build the changelog
 
 jobs:
   update-draft:
