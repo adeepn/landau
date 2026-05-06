@@ -70,6 +70,13 @@ for f in "${files[@]}"; do
       gsub(/https?:\/\/[^[:space:])]+/, " ")            # URLs
       gsub(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/, " ")     # emails
       gsub(/[][(){}|*_~#]/, " ")                        # markdown punctuation
+      # Strip invisible Unicode chars that confuse hunspell tokenizer.
+      # Byte sequences below are the UTF-8 encodings of:
+      gsub(/\xef\xb8\x8f/, " ")                         # U+FE0F variation selector-16
+      gsub(/\xef\xb8\x8e/, " ")                         # U+FE0E variation selector-15
+      gsub(/\xe2\x80\x8d/, " ")                         # U+200D zero-width joiner
+      gsub(/\xe2\x80\x8c/, " ")                         # U+200C zero-width non-joiner
+      gsub(/\xe2\x80\x8b/, " ")                         # U+200B zero-width space
       print
     }
   ' "$f" \

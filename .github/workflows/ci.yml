@@ -56,9 +56,10 @@ jobs:
           echo "${RUNNER_TEMP}/hugo" >> "$GITHUB_PATH"
 
       - name: Build (production-equivalent, fail on warnings)
-        env:
-          HUGO_PARAMS_VERSION: dev-${{ github.sha }}
-        run: hugo --gc --minify --logLevel info --panicOnWarning
+        run: |
+          set -euo pipefail
+          export HUGO_PARAMS_VERSION="dev-${GITHUB_SHA::7}"
+          hugo --gc --minify --logLevel info --panicOnWarning
 
       - name: Upload built site as artifact
         uses: actions/upload-artifact@v7.0.1

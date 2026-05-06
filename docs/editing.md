@@ -18,17 +18,14 @@ hugo server -D                    # http://localhost:1313, авто-переза
 
 ```
 feature-ветка → правим .md → hugo server -D смотрим в браузере
-git push          →   CI и spell-check на пуше; артефакт сборки доступен в Actions
-открываем PR в main, ревьюим, мержим
-                  →   release-drafter обновляет draft GitHub Release
-                      (версия YYYY.MM.N автоматически)
-вручную "Publish release" в UI GitHub
-                  →   release-deploy билдит и rsync-ит на landau.one
+git push                  →   на ветке гоняются CI и spell-check
+открываем PR в main → ревью → мерж
+                          →   ваши изменения войдут в следующий релиз;
+                              на landau.one они попадут, когда мейнтейнер
+                              этот релиз опубликует
 ```
 
-**Push в `main` (включая мерж PR) сам по себе НЕ публикует** на landau.one. Публикация — это явное действие: открыть последний draft release в Settings → Releases, проверить changelog, нажать «Publish release». Только тогда деплой.
-
-Прямые коммиты в `main` (без PR) тоже валидны и попадут в draft release, но рабочая модель — feature branch + PR.
+Прямые коммиты в `main` (без PR) тоже валидны, но рабочая модель — feature branch + PR.
 
 ## Что и где редактировать
 
@@ -57,7 +54,6 @@ hugo new content events/open-mic-002/index.md
 4. Локально проверить: `http://localhost:1313/events/open-mic-002/`.
 5. `git add content/events/open-mic-002/ && git commit -m "event: add open-mic-002"`.
 6. `git push -u origin event/open-mic-002` → открыть PR в `main`.
-7. После мержа PR — событие попадёт в следующий draft release; деплой случится при ручной публикации.
 
 Список всех событий автоматически появится на странице `/events/`. Если нужно, чтобы новое событие отображалось ещё и в секции «🎙️ Список событий» на главной — добавьте ссылку вручную в `content/_index.md` (главная не подтягивает события сама — это сознательно, чтобы вы выбирали что показывать).
 
@@ -131,24 +127,10 @@ bash scripts/spellcheck.sh            # см. секцию «Орфографи�
 
 Если локально стоит `hunspell` со словарями `ru_RU` и `en_US` — `bash scripts/spellcheck.sh`. Если нет, можно не ставить: те же проверки автоматически прогонятся в CI на пуше.
 
-## Если деплой упал
+## Если CI на PR упал
 
-```bash
-gh run list --workflow=release-deploy.yml --limit 5
-gh run view <ID> --log-failed
-```
+Откройте Actions-вкладку PR-а или прокрутите вниз сам PR — там видно, какой шаг упал. Самые частые причины:
 
-Типичные причины:
-
-- Секреты `DEPLOY_SSH_*` отсутствуют или с опечаткой → шаг **Deploy via rsync** покажет SSH-ошибку.
-- `DEPLOY_SSH_KNOWNHOSTS` устарел (на сервере перевыпустили SSH-ключ) → перегенерировать `ssh-keyscan -t ed25519,rsa <host>` и обновить секрет.
-- nginx не отдаёт обновлённое содержимое → проверить, что `DEPLOY_SSH_PATH` действительно равен docroot в nginx-конфиге.
-
-## Откатить релиз
-
-Если опубликовали draft, и в продакшне всплыла регрессия:
-
-1. В Releases зайти в предыдущий релиз и нажать «Edit» → копировать тег.
-2. На странице workflow `release-deploy.yml` нажать «Run workflow», выбрать ветку с этим тегом (или просто main с `git checkout <тег> && git push -f` — но так лучше не делать).
-
-Проще: открыть `release-deploy.yml` через `workflow_dispatch` на main; он перебилдит и зальёт текущее состояние main с пометкой версии = последний тег. Если нужен именно конкретный прошлый тег — сделайте PR `revert: ...`, мерж, новый draft, publish.
+- **build** — Hugo выдал warning или ошибку. Лог покажет файл и строку.
+- **codespell** — английская опечатка; правьте текст или, если это намеренно, обсудите.
+- **hunspell** — слово не в словаре. Если это легитимный термин или имя — добавьте в `.spellcheck-allow.txt` той же ветки, иначе фиксите опечатку.

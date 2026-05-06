@@ -1,7 +1,7 @@
 name: Spell check
 
 # Two-stage spell check on markdown sources:
-#   1. codespell  — fast English typo scan (recieve, occured, lenght, ...).
+#   1. codespell  — fast English typo scan against the project's word list.
 #   2. hunspell   — RU + EN dictionary check via scripts/spellcheck.sh,
 #                   with project-specific words in .spellcheck-allow.txt.
 
