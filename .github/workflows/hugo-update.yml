@@ -111,13 +111,17 @@ jobs:
           if gh pr view "${branch}" --json number >/dev/null 2>&1; then
             echo "PR for ${branch} already exists — push refreshed it."
           else
+            body_file=$(mktemp "${TMPDIR:-/tmp}/hugo-bump-body.XXXXXX")
+            {
+              echo "Automated bump from \`v${CURRENT}\` to \`v${LATEST}\`."
+              echo
+              echo "* Source: https://github.com/gohugoio/hugo/releases/tag/v${LATEST}"
+              echo "* SHA256 (\`hugo_extended_${LATEST}_linux-amd64.tar.gz\`): \`${SHA256}\`"
+              echo "* Smoke-test: \`hugo --gc --minify\` ran successfully against the current site sources before this PR was opened."
+              echo
+              echo "Opened by \`.github/workflows/hugo-update.yml\`."
+            } > "${body_file}"
             gh pr create \
               --title "ci(hugo): bump from v${CURRENT} to v${LATEST}" \
-              --body "Automated bump from \`v${CURRENT}\` to \`v${LATEST}\`.
-
-* Source: https://github.com/gohugoio/hugo/releases/tag/v${LATEST}
-* SHA256 (\`hugo_extended_${LATEST}_linux-amd64.tar.gz\`): \`${SHA256}\`
-* Smoke-test: \`hugo --gc --minify\` ran successfully against the current site sources before this PR was opened.
-
-Opened by \`.github/workflows/hugo-update.yml\`."
+              --body-file "${body_file}"
           fi
