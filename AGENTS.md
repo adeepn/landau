@@ -17,7 +17,8 @@ Authoritative content language is **Russian**. English appears only in the proje
 
 ```
 .github/
-  workflows/      ci, spelling, release-drafter, release-deploy, hugo-update
+  workflows/      ci, spelling, release-drafter, release-deploy,
+                  pages-mirror, hugo-update
   release-drafter.yml   # changelog template
   dependabot.yml        # github-actions ecosystem
 .hugo-version           # pinned Hugo version
@@ -58,7 +59,7 @@ PR-based, manually-published model:
 1. Feature branch → PR to `main`.
 2. On every push and PR: **`ci.yml`** (Hugo build with `--panicOnWarning`, artifact uploaded ≤ 7 days / ≤ 10 newest) and **`spelling.yml`** (codespell + `scripts/spellcheck.sh`) run.
 3. After merge to `main`: **`release-drafter.yml`** computes the next CalVer tag and refreshes the draft GitHub Release with all merged PRs since the previous tag, listed flat. Concurrently, **`release-deploy.yml`** rsyncs the build to the **beta** target — `${DEPLOY_SSH_PATH}.beta` — with `HUGO_PARAMS_VERSION=beta-<short-sha>`. Beta lets the maintainer eyeball the merged state on a separate URL before publishing.
-4. Maintainer publishes the draft release manually → the same **`release-deploy.yml`** runs again, now on `release: published`, building with `HUGO_PARAMS_VERSION=<tag>` and rsyncing to the **prod** target — `${DEPLOY_SSH_PATH}` — then pruning published releases (and tags) past the 7 most recent.
+4. Maintainer publishes the draft release manually → the same **`release-deploy.yml`** runs again, now on `release: published`, building with `HUGO_PARAMS_VERSION=<tag>` and rsyncing to the **prod** target — `${DEPLOY_SSH_PATH}` — then pruning published releases (and tags) past the 7 most recent. Concurrently, **`pages-mirror.yml`** mirrors the same build to GitHub Pages (`https://<owner>.github.io/<repo>/`) as a passive backup; canonical/og:url stay pointed at landau.one so search engines treat the mirror as a duplicate, not a separate site.
 
 Push to `main` does **not** publish to prod (`landau.one`) — that requires explicit "Publish release" in the GitHub UI (or `release-deploy.yml` via `workflow_dispatch`). Push only updates the beta target and the draft release.
 

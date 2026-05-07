@@ -1,0 +1,99 @@
+name: Pages mirror
+
+# Mirror the published release to GitHub Pages, alongside the prod
+# self-hosted deploy at landau.one.
+#
+# Why this works without a separate build:
+#   - hugo.toml has `relativeURLs = true`, so internal hrefs in HTML are
+#     relative and resolve correctly under either `/` (landau.one) or
+#     `/landau/` (the GH Pages URL `adeepn.github.io/landau/`).
+#   - canonical / og:url / sitemap entries stay absolute against the
+#     `baseURL` from hugo.toml (`https://landau.one/`). On the mirror,
+#     those tags continue to point at landau.one — search engines see
+#     the mirror as a backup, not a duplicate, and SEO weight stays on
+#     the prod domain.
+#
+# One-time repo setup: Settings → Pages → Source = "GitHub Actions".
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages:    write
+  id-token: write   # OIDC for actions/deploy-pages
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout (full history for `git describe` fallback)
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            version="${{ github.event.release.tag_name }}"
+          else
+            version=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Read pinned Hugo version + SHA256
+        id: pin
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < .hugo-version)
+          sha256=$(tr -d '[:space:]' < .hugo-sha256)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sha256}"   >> "$GITHUB_OUTPUT"
+
+      - name: Install Hugo extended (linux-amd64, pinned + SHA256-verified)
+        env:
+          HUGO_VERSION: ${{ steps.pin.outputs.version }}
+          HUGO_SHA256:  ${{ steps.pin.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          tarball="hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz"
+          url="https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/${tarball}"
+          curl -fsSL --retry 3 "${url}" -o /tmp/hugo.tar.gz
+          echo "${HUGO_SHA256}  /tmp/hugo.tar.gz" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/hugo"
+          tar -xzf /tmp/hugo.tar.gz -C "${RUNNER_TEMP}/hugo" hugo
+          echo "${RUNNER_TEMP}/hugo" >> "$GITHUB_PATH"
+
+      - name: Build site (same baseURL as prod — relativeURLs handles depth)
+        run: |
+          set -euo pipefail
+          export HUGO_PARAMS_VERSION="${{ steps.ver.outputs.version }}"
+          hugo --gc --minify --logLevel info --panicOnWarning
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: public/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5.0.0
