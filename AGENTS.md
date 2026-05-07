@@ -1,110 +1,97 @@
-This file is the context for coding agents (Claude Code, Codex, OpenHands, …) working on this repository. The human-facing editing guide — adding events/news, changing design, debugging deploys — lives in [`docs/editing.md`](docs/editing.md).
+This file is the context for coding agents (Claude Code, Codex, OpenHands, …) working on this repository. The human-facing editing guide lives in [`docs/editing.md`](docs/editing.md).
 
 ## Project context
 
-`landau` is the public website for the **LANDAU Kernel** initiative — an *upstream-first* Linux kernel fork project led by the [Russian Linux Kernel Community (RULKC)](https://rulkc.org). The repo is content-only (no application code): project description, planned and past events ("Открытый микрофон" series, RULKC Meetup, OSDevConf), news, and contact channels.
+`landau` is the public website for the **LANDAU Kernel** initiative — an *upstream-first* Linux kernel fork project led by the [Russian Linux Kernel Community (RULKC)](https://rulkc.org). Content-only repo: project description, events, news, contact channels.
 
 Authoritative content language is **Russian**. English appears only in the project name, slogan, and a few section headings.
 
 ## Stack
 
-- **Hugo extended**, version pinned in `.hugo-version` (currently `0.160.1`).
-- **Hugo binary tarball SHA256** pinned in `.hugo-sha256` (`hugo_extended_${ver}_linux-amd64.tar.gz`). The deploy workflow downloads from `github.com/gohugoio/hugo/releases` and verifies before extracting. Both files are bumped atomically by `.github/workflows/hugo-update.yml`.
-- **Theme** is `pages-themes/hacker` (the original GitHub Pages theme) **flattened into plain CSS** at `static/css/hacker.css`. Source commit is recorded in the file header. Background sprites live at `static/images/{bkg,bullet}.png`.
-- **Layouts** are minimal Go templates in `layouts/_default/{baseof,single,list}.html` + `layouts/index.html`. They reproduce the Jekyll theme's `_layouts/default.html` skeleton (header with site title + description, container with `#main_content`).
-- **Domain**: `landau.one`, served by nginx on a self-hosted server.
-- **Build & deploy**: GitHub Actions → rsync into the nginx docroot.
-
-## Build, preview, deploy
-
-There is no Node, Ruby, or Go toolchain to install — Hugo is a single binary.
-
-| Action | Command | Notes |
-| --- | --- | --- |
-| Local preview | `hugo server -D` | Install via `brew install hugo` (extended, latest stable). Local version may differ slightly from the CI pin; that's OK for previewing markdown. |
-| Local build | `hugo --gc --minify` | Output is `public/`. |
-| New event | `hugo new events/<slug>/index.md` | Uses `archetypes/events.md` as template. Page bundle so photos/files can sit alongside. |
-| New news post | `hugo new news/<slug>.md` | Uses `archetypes/news.md`. |
-| Production deploy | `git push origin main` | Triggers `.github/workflows/deploy.yml`. |
-
-Until you have content ready to publish, keep `draft: true` in frontmatter — Hugo skips drafts by default in production builds.
+- **Hugo extended**, version pinned in `.hugo-version`; tarball SHA256 in `.hugo-sha256`. Both bumped weekly via `.github/workflows/hugo-update.yml`.
+- **Theme** is `pages-themes/hacker` flattened into plain CSS at `static/css/hacker.css`. Source commit recorded in the file header. Sprites: `static/images/{bkg,bullet}.png`.
+- **Layouts** are minimal Go templates in `layouts/_default/{baseof,single,list}.html` + `layouts/index.html`.
+- **Domain**: `landau.one`, served by nginx on a self-hosted server. Production builds rsync into the nginx docroot.
 
 ## Repository layout
 
 ```
 .github/
-  workflows/
-    deploy.yml          # build + rsync to landau.one on push to main
-    hugo-update.yml     # weekly cron: bump .hugo-version + .hugo-sha256, open PR
-  dependabot.yml        # github-actions ecosystem only
-.hugo-version           # pinned Hugo version (e.g. 0.160.1)
-.hugo-sha256            # SHA256 of hugo_extended_<ver>_linux-amd64.tar.gz
-hugo.toml               # site config: baseURL=https://landau.one/, relativeURLs=true
-archetypes/             # `hugo new` templates: default, events, news
+  workflows/      ci, spelling, release-drafter, release-deploy, hugo-update
+  release-drafter.yml   # changelog template
+  dependabot.yml        # github-actions ecosystem
+.hugo-version           # pinned Hugo version
+.hugo-sha256            # pinned linux-amd64 tarball SHA256
+hugo.toml               # baseURL=https://landau.one/, relativeURLs=true
+archetypes/             # `hugo new` templates
 content/
-  _index.md             # home page (was Jekyll's index.md)
-  events/
-    _index.md           # /events/ landing
-    open-mic-001/
-      index.md          # event page bundle; photos go alongside this file
-  news/
-    _index.md           # /news/ landing (placeholder, no posts yet)
-layouts/
-  _default/{baseof,single,list}.html
-  index.html
-static/
-  css/hacker.css        # theme, plain CSS
-  images/{bkg,bullet}.png
-  rulkc.png             # RULKC logo, referenced from _index.md
-docs/
-  editing.md            # editor's quick reference (human-facing)
-README.md               # title only, not part of rendered site
-AGENTS.md               # this file (agent context)
-LICENSE
+  _index.md             # home
+  events/               # event page bundles (photos sit alongside index.md)
+  news/                 # placeholder section
+layouts/                # Go templates
+static/                 # css, images, rulkc.png — copied verbatim
+scripts/spellcheck.sh   # awk markdown stripper + hunspell driver
+docs/editing.md         # editor's quick reference
 ```
 
 ## URL conventions
 
-- `relativeURLs = true` in `hugo.toml`. All HTML `href`/`src` attributes that start with `/` are rewritten by Hugo to relative paths from the current page. RSS, sitemap, canonical, and Open Graph still emit absolute URLs against `baseURL = "https://landau.one/"` (those need to be absolute by spec).
-- When linking between pages from inside markdown, write a leading-slash absolute path (`[home](/)`, `[event](/events/open-mic-001/)`) — Hugo will canonicalise it. Avoid `./foo.md`-style Jekyll-flavoured links.
-- The event page `content/events/open-mic-001/index.md` carries `aliases: ['/open_mic_27_03_2026.html']`. Hugo emits a tiny HTML redirect at that path so any old GitHub Pages link still works.
+- `relativeURLs = true` in `hugo.toml`: HTML `href`/`src` starting with `/` are rewritten to relative paths. RSS, sitemap, canonical, og:url stay absolute against `baseURL`.
+- In markdown, write internal links with leading slash (`[home](/)`, `[event](/events/open-mic-001/)`); Hugo rewrites them. Avoid `./foo.md`-style links.
+- The event page `content/events/open-mic-001/index.md` carries `aliases: ['/open_mic_27_03_2026.html']` for backwards compatibility with the previous GitHub Pages URL.
 
 ## Theme update procedure
 
-The `pages-themes/hacker` upstream is rarely changed (last commit on master is from 2024), so we don't track it as a submodule — we lifted the SCSS once. To refresh:
+Theme is lifted (not a submodule) — upstream changes rarely. To refresh:
 
-1. Pick a new commit SHA in `https://github.com/pages-themes/hacker`.
-2. Pull the SCSS sources (`_sass/_default_colors.scss`, `_sass/jekyll-theme-hacker.scss`, `_sass/rouge-base16-dark.scss`) and re-flatten variables into `static/css/hacker.css`. Update the comment header with the new commit SHA.
-3. If `assets/images/bkg.png` or `bullet.png` changed, refresh `static/images/{bkg,bullet}.png`.
-4. Verify with `hugo server` that the page still renders identically (no visual regression is the whole point of having lifted the theme).
+1. Pick a new `pages-themes/hacker` commit SHA.
+2. Re-flatten its `_sass/` files into `static/css/hacker.css` (variables inlined). Update the file's comment header with the new SHA.
+3. If the upstream `bkg.png` / `bullet.png` changed, refresh `static/images/`.
+4. Verify with `hugo server` that nothing rendered differently.
 
-There is no SCSS toolchain in this repo on purpose — the CSS is final, hand-flattened, and human-readable.
+There is no SCSS toolchain in the repo on purpose.
 
-## CI / supply chain
+## CI and release pipeline
 
-- **All Action versions are pinned to specific tags** (e.g. `actions/checkout@v6.0.2`). Dependabot watches the `github-actions` ecosystem and opens weekly PRs.
-- **Hugo is bumped by a custom cron workflow**, not Dependabot. The workflow enforces a 7-day release soak (skips releases younger than a week, per the global supply-chain rule), fetches the official `checksums.txt` from the GitHub release to populate `.hugo-sha256`, smoke-tests `hugo --gc --minify` against the current site, then opens a PR. Manual trigger via `workflow_dispatch`.
-- **Deploy secrets** required in repo settings:
-  - `DEPLOY_SSH_KEY` — full PEM, including the `-----BEGIN/END-----` lines
-  - `DEPLOY_SSH_HOST` — hostname (matches the entry in `DEPLOY_SSH_KNOWNHOSTS`)
-  - `DEPLOY_SSH_USER` — SSH login user
-  - `DEPLOY_SSH_PATH` — absolute path on the server, the nginx docroot, no trailing slash. The deploy step rsyncs `public/` directly into this path with `--delete` (no atomic release directory yet — there's a brief window during sync where the site is in an inconsistent state).
-  - `DEPLOY_SSH_KNOWNHOSTS` — output of `ssh-keyscan -t ed25519,rsa <host>`. The deploy step writes this to `~/.ssh/known_hosts` and uses `StrictHostKeyChecking=yes`.
+PR-based, manually-published model:
+
+1. Feature branch → PR to `main`.
+2. On every push and PR: **`ci.yml`** (Hugo build with `--panicOnWarning`, artifact uploaded ≤ 7 days / ≤ 10 newest) and **`spelling.yml`** (codespell + `scripts/spellcheck.sh`) run.
+3. After merge to `main`: **`release-drafter.yml`** computes the next CalVer tag and refreshes the draft GitHub Release with all merged PRs since the previous tag, listed flat.
+4. Maintainer publishes the draft release manually → **`release-deploy.yml`** builds Hugo with `HUGO_PARAMS_VERSION=<tag>`, rsyncs `public/` to landau.one, then prunes published releases (and tags) past the 7 most recent.
+
+Push to `main` does **not** publish to landau.one — that requires explicit "Publish release" in the GitHub UI (or `release-deploy.yml` via `workflow_dispatch`).
+
+### Versioning (CalVer `YYYY.MM.N`)
+
+Tag `YYYY.MM.N` is computed from the latest existing tag:
+
+- Same year+month → `N = latest.N + 1`.
+- New month or no tags yet → `N = 0`.
+
+The first release of any month is `.0`. Bash uses the `10#` prefix when incrementing `N` to avoid octal interpretation of `08`/`09`.
+
+### Footer version
+
+`layouts/_default/baseof.html` reads `site.Params.version` and renders it in a footer. CI sets `HUGO_PARAMS_VERSION=dev-<short-sha>`; `release-deploy.yml` sets it to the release tag; a bare `hugo server` falls back to `dev`.
+
+### Spell checking
+
+- **codespell** scans English typos via `.codespellrc` (skips hidden dirs by default).
+- **hunspell** via `scripts/spellcheck.sh` strips YAML frontmatter, code, HTML, URLs, emails, and common markdown punctuation, then runs `hunspell -d ru_RU,en_US -l` filtered through `.spellcheck-allow.txt`. The CI workflow pulls dictionaries directly from a pinned `LibreOffice/dictionaries` commit (Ubuntu's `hunspell-ru` package conflicts with `postgresql-common` triggers on the GitHub Actions runner image and ends up not installing the dictionary files).
+- Script is Bash 3.2-compatible (no `mapfile`).
+
+### Supply chain
+
+- All Action versions pinned (e.g. `actions/checkout@v6.0.2`). Dependabot watches the `github-actions` ecosystem.
+- Hugo is bumped by `.github/workflows/hugo-update.yml` (weekly cron). 7-day release soak; smoke-test build before opening the bump PR.
+- No third-party action is used for release/artifact pruning — both run via `gh api` directly.
+- Deploy secrets in repo settings: `DEPLOY_SSH_KEY` (full PEM), `DEPLOY_SSH_HOST`, `DEPLOY_SSH_USER`, `DEPLOY_SSH_PATH` (nginx docroot, no trailing slash), `DEPLOY_SSH_KNOWNHOSTS` (output of `ssh-keyscan -t ed25519,rsa <host>`).
 
 ## Editorial conventions
 
-These are conventions visible in the existing two pages — keep them when adding content:
-
-- Top-level page heading uses an emoji prefix (`# ⚛️ …`, `# 🎙️ …`). Emoji is part of the brand voice.
+- Top-level page heading uses an emoji prefix (`# ⚛️ …`, `# 🎙️ …`). Brand voice.
 - Section dividers are `---` on their own line.
-- Event pages start with the structure in `archetypes/events.md`: 📅 date, ⏰ time, 📍 format, 👥 organizer block at the top; "Регистрация и контакты" at the bottom; "⬅️ Вернуться на главную" backlink as the last line.
-- Contact channels in `_index.md` are rendered as a **two-column markdown table**, with the logo card as a separate single-row table — preserve this layout, since plain-CSS rendering depends on it.
-- Russian typography: keep punctuation, em-dashes, and quotation marks as they are.
-
-## Things to verify before claiming a deploy task is done
-
-- `hugo --gc --minify` exits 0 with no warnings other than informational ones.
-- The home page renders the LANDAU description, the contact table, the RULKC logo card, and a working link into `/events/open-mic-001/`.
-- `/open_mic_27_03_2026.html` redirects to the event page (Hugo writes a meta-refresh stub there from the `aliases` frontmatter).
-- All `mailto:`, `https://t.me/…`, and `https://rulkc.org` links remain clickable and unchanged.
-- After a `git push origin main`, the GitHub Actions run for `.github/workflows/deploy.yml` succeeds end to end (build + rsync). Confirm `landau.one` actually serves the new content.
+- Event pages follow `archetypes/events.md` shape: 📅/⏰/📍/👥 block at top, registration block at bottom, "⬅️ Вернуться на главную" backlink last.
+- Contact channels in `_index.md` are rendered as a two-column markdown table; the logo card is a separate single-row table. Preserve.
+- Russian typography: keep punctuation, em-dashes, and quotation marks.

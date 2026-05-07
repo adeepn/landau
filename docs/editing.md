@@ -4,8 +4,9 @@
 
 ## Один раз перед началом
 
+Поставьте Hugo extended (любым способом для вашей ОС). Затем:
+
 ```bash
-brew install hugo                 # extended, актуальный stable
 git clone git@github.com:adeepn/landau.git
 cd landau
 hugo server -D                    # http://localhost:1313, авто-перезагрузка
@@ -16,11 +17,15 @@ hugo server -D                    # http://localhost:1313, авто-переза
 ## Базовый цикл
 
 ```
-правим .md   →   hugo server -D в браузере
-git commit && git push origin main   →   CI билдит и rsync на landau.one
+feature-ветка → правим .md → hugo server -D смотрим в браузере
+git push                  →   на ветке гоняются CI и spell-check
+открываем PR в main → ревью → мерж
+                          →   ваши изменения войдут в следующий релиз;
+                              на landau.one они попадут, когда мейнтейнер
+                              этот релиз опубликует
 ```
 
-Деплоится только ветка `main`. Работа в любой другой ветке / PR — без публикации.
+Прямые коммиты в `main` (без PR) тоже валидны, но рабочая модель — feature branch + PR.
 
 ## Что и где редактировать
 
@@ -37,6 +42,7 @@ Markdown-файлы устроены так: между двумя `---` све�
 ## Добавить событие
 
 ```bash
+git checkout -b event/open-mic-002
 hugo new content events/open-mic-002/index.md
 ```
 
@@ -46,13 +52,15 @@ hugo new content events/open-mic-002/index.md
 2. Поправить во frontmatter `title`, `description` и `date` (по дате идёт сортировка на `/events/`).
 3. Когда готово — `draft: true` → `draft: false`.
 4. Локально проверить: `http://localhost:1313/events/open-mic-002/`.
-5. `git add content/events/open-mic-002/ && git commit && git push`.
+5. `git add content/events/open-mic-002/ && git commit -m "event: add open-mic-002"`.
+6. `git push -u origin event/open-mic-002` → открыть PR в `main`.
 
 Список всех событий автоматически появится на странице `/events/`. Если нужно, чтобы новое событие отображалось ещё и в секции «🎙️ Список событий» на главной — добавьте ссылку вручную в `content/_index.md` (главная не подтягивает события сама — это сознательно, чтобы вы выбирали что показывать).
 
 ## Добавить новость
 
 ```bash
+git checkout -b news/2026-05-06-zagolovok
 hugo new content news/2026-05-06-zagolovok.md
 ```
 
@@ -106,20 +114,25 @@ Hugo сам разрулит относительные пути. Lightbox-га�
 ## Перед пушем
 
 ```bash
-hugo --gc --minify
+hugo --gc --minify --panicOnWarning   # то же, что в CI
+bash scripts/spellcheck.sh            # см. секцию «Орфография» ниже
 ```
 
-Та же команда, что и в CI. Если выходит без warnings и `public/index.html` визуально нормальный — деплой пройдёт.
+Если оба прошли без ошибок — CI на пуше тоже пройдёт.
 
-## Если деплой упал
+## Орфография
 
-```bash
-gh run list --limit 5
-gh run view <ID> --log-failed
-```
+- **codespell** ловит распространённые английские опечатки (типа пропущенных букв, перестановок, удвоений). Запускается в CI автоматически.
+- **hunspell** прогоняет русский + английский, исключения — в `.spellcheck-allow.txt` (по слову на строку, отсортировано). Если CI ругается на легитимное имя собственное или термин — добавьте слово туда.
 
-Типичные причины:
+Если локально стоит `hunspell` со словарями `ru_RU` и `en_US` — `bash scripts/spellcheck.sh`. Если нет, можно не ставить: те же проверки автоматически прогонятся в CI на пуше.
 
-- Секреты `DEPLOY_SSH_*` отсутствуют или с опечаткой → шаг **Deploy via rsync** покажет SSH-ошибку.
-- `DEPLOY_SSH_KNOWNHOSTS` устарел (на сервере перевыпустили SSH-ключ) → перегенерировать `ssh-keyscan -t ed25519,rsa <host>` и обновить секрет.
-- nginx не отдаёт обновлённое содержимое → проверить, что `DEPLOY_SSH_PATH` действительно равен docroot в nginx-конфиге.
+## Если CI на PR упал
+
+Откройте Actions-вкладку PR-а или прокрутите вниз сам PR — там видно, какой шаг упал. Самые частые причины:
+
+- **build** — Hugo выдал warning или ошибку. Лог покажет файл и строку.
+- **codespell** — английская опечатка; правьте текст или, если это намеренно, обсудите.
+- **hunspell** — слово не в словаре. Если это легитимный термин или имя — добавьте в `.spellcheck-allow.txt` той же ветки, иначе исправьте опечатку.
+
+После пуша CI сам сортирует `.spellcheck-allow.txt` и при необходимости коммитит результат от имени бота — перед следующим `git push` сделайте `git pull --rebase`, чтобы подобрать его коммит.
