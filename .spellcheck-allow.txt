@@ -42,6 +42,7 @@ px
 repo
 roadmap
 rsync
+rsyncing
 rsyncs
 rulkc
 submodule
