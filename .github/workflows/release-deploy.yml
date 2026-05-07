@@ -1,17 +1,22 @@
-name: Release deploy
+name: Deploy
 
-# Build Hugo site (pinned) and rsync the result to the production server
-# whenever a draft release is *published*. Manual trigger via workflow_dispatch
-# also works (deploys whatever's on main with the latest tag as version).
+# Build Hugo site (pinned) and rsync to one of two targets, depending
+# on what fired the workflow:
 #
-# After a successful deploy, prune older releases (keep 7 most recent published)
-# along with their git tags, so the GitHub Releases UI doesn't accumulate noise.
+#   * `release: published` (or manual `workflow_dispatch`) → production:
+#     `${DEPLOY_SSH_PATH}` on the server. Footer shows the release tag.
+#     After a successful deploy, prune published releases past the 7
+#     most recent (and their git tags).
+#
+#   * `push: main` → beta: `${DEPLOY_SSH_PATH}.beta` on the same server.
+#     Footer shows `beta-<short-sha>`. No release pruning.
 #
 # Required repository secrets:
 #   DEPLOY_SSH_KEY         private key (full PEM, including BEGIN/END lines)
 #   DEPLOY_SSH_HOST        target hostname
 #   DEPLOY_SSH_USER        SSH login user
-#   DEPLOY_SSH_PATH        absolute path on server (nginx docroot, no trailing slash)
+#   DEPLOY_SSH_PATH        absolute path on server for prod (no trailing slash);
+#                          beta deploys append `.beta` to this path
 #   DEPLOY_SSH_KNOWNHOSTS  output of `ssh-keyscan -t ed25519,rsa <host>`
 #
 # Hugo version + tarball checksum live in `.hugo-version` and `.hugo-sha256`
@@ -20,14 +25,19 @@ name: Release deploy
 on:
   release:
     types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: release-deploy
+  # Beta and prod deploys serialize independently — beta running doesn't
+  # block prod and vice versa. Within each lane, queue rather than cancel
+  # so we don't overwrite newer content with older.
+  group: deploy-${{ github.event_name == 'push' && 'beta' || 'prod' }}
   cancel-in-progress: false
 
 permissions:
-  contents: write   # for prune-old-releases step (release + tag deletion)
+  contents: write   # for the prune-old-releases step (release event only)
 
 jobs:
   deploy:
@@ -40,17 +50,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine release version for footer
-        id: ver
+      - name: Determine deploy target and version
+        id: target
         run: |
           set -euo pipefail
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            version="${{ github.event.release.tag_name }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Push to main → beta path, short-SHA-stamped beta version.
+            echo "path_suffix=.beta" >> "$GITHUB_OUTPUT"
+            echo "version=beta-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "Target: beta | Version: beta-${GITHUB_SHA::7}"
           else
-            version=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+            # Release published or manual dispatch → prod path, tag-stamped version.
+            if [ -n "${{ github.event.release.tag_name }}" ]; then
+              version="${{ github.event.release.tag_name }}"
+            else
+              version=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+            fi
+            echo "path_suffix=" >> "$GITHUB_OUTPUT"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            echo "Target: prod | Version: ${version}"
           fi
-          echo "Version param: ${version}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Read pinned Hugo version + SHA256
         id: pin
@@ -76,10 +95,11 @@ jobs:
           "${RUNNER_TEMP}/hugo/hugo" version
           echo "${RUNNER_TEMP}/hugo" >> "$GITHUB_PATH"
 
-      - name: Build site (with release version embedded)
-        env:
-          HUGO_PARAMS_VERSION: ${{ steps.ver.outputs.version }}
-        run: hugo --gc --minify --logLevel info --panicOnWarning
+      - name: Build site (with version embedded)
+        run: |
+          set -euo pipefail
+          export HUGO_PARAMS_VERSION="${{ steps.target.outputs.version }}"
+          hugo --gc --minify --logLevel info --panicOnWarning
 
       - name: Configure SSH
         env:
@@ -99,16 +119,17 @@ jobs:
           DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
           DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
           DEPLOY_SSH_PATH: ${{ secrets.DEPLOY_SSH_PATH }}
+          PATH_SUFFIX:     ${{ steps.target.outputs.path_suffix }}
         run: |
           set -euo pipefail
           rsync -az --delete \
                 --exclude='.well-known/' \
                 -e "ssh -i ~/.ssh/deploy_key -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes" \
                 public/ \
-                "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${DEPLOY_SSH_PATH}/"
+                "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}:${DEPLOY_SSH_PATH}${PATH_SUFFIX}/"
 
-      - name: Prune old published releases (keep 7 most recent)
-        if: success()
+      - name: Prune old published releases (release event only, keep 7 most recent)
+        if: github.event_name == 'release' && success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
